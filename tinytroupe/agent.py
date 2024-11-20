@@ -728,11 +728,29 @@ class TinyPerson(JsonSerializableRegistry):
         self._accessible_agents = []
         self._configuration["currently_accessible_agents"] = []
 
+    # @transactional
+    # def _produce_message(self):
+    #     # logger.debug(f"Current messages: {self.current_messages}")
+
+    #     # ensure we have the latest prompt (initial system message + selected messages from memory)
+    #     self.reset_prompt()
+
+    #     messages = [
+    #         {"role": msg["role"], "content": json.dumps(msg["content"])}
+    #         for msg in self.current_messages
+    #     ]
+
+    #     logger.debug(f"[{self.name}] Sending messages to OpenAI API")
+    #     logger.debug(f"[{self.name}] Last interaction: {messages[-1]}")
+
+    #     next_message = openai_utils.client().send_message(messages)
+
+    #     logger.debug(f"[{self.name}] Received message: {next_message}")
+    #     logging.error(f"Raw response from model: {next_message}")
+
+    #     return next_message["role"], utils.extract_json(next_message["content"])
     @transactional
     def _produce_message(self):
-        # logger.debug(f"Current messages: {self.current_messages}")
-
-        # ensure we have the latest prompt (initial system message + selected messages from memory)
         self.reset_prompt()
 
         messages = [
@@ -740,14 +758,31 @@ class TinyPerson(JsonSerializableRegistry):
             for msg in self.current_messages
         ]
 
-        logger.debug(f"[{self.name}] Sending messages to OpenAI API")
-        logger.debug(f"[{self.name}] Last interaction: {messages[-1]}")
+        # logger.debug(f"[{self.name}] Sending messages to OpenAI API")
+        # logger.debug(f"[{self.name}] Last interaction: {messages[-1]}")
 
-        next_message = openai_utils.client().send_message(messages)
+        # Send message and get the full response
+        raw_response = openai_utils.client().send_message(messages)
+        # logger.debug(f"Raw response from model: {raw_response}")
+        # logging.error(f"Raw response from model: {raw_response}")
 
-        logger.debug(f"[{self.name}] Received message: {next_message}")
+        try:
+            # Extract the 'content' field from 'message' if present
+            next_message_content = raw_response.get("message", {}).get("content", "")
 
-        return next_message["role"], utils.extract_json(next_message["content"])
+            # Parse the content into JSON if it's a string
+            if isinstance(next_message_content, str):
+                content = utils.extract_json(next_message_content)
+            else:
+                content = next_message_content  # Already parsed
+
+            role = raw_response.get("action", {}).get("type", "assistant")
+            return role, content
+
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON response content: {raw_response}") from e
+        except Exception as e:
+            raise ValueError(f"Unexpected response format: {raw_response}") from e
 
     ###########################################################
     # Internal cognitive state changes
@@ -1029,8 +1064,14 @@ class TinyPerson(JsonSerializableRegistry):
         if simplified:
             msg_simplified_actor = self.name
             msg_simplified_type = content["action"]["type"]
+            
+            # Handle None case by defaulting to an empty string
+            action_content = content["action"].get("content", "")
+            if action_content is None:
+                action_content = ""
+            
             msg_simplified_content = break_text_at_length(
-                content["action"].get("content", ""), max_length=max_content_length
+                action_content, max_length=max_content_length
             )
 
             indent = " " * len(msg_simplified_actor) + "      > "
@@ -1056,6 +1097,7 @@ class TinyPerson(JsonSerializableRegistry):
             return f"[{rich_style}][underline]{msg_simplified_actor}[/] acts: [{msg_simplified_type}] \n{msg_simplified_content}[/]"
         else:
             return f"{role}: {content}"
+
     
     def _pretty_timestamp(
         self,

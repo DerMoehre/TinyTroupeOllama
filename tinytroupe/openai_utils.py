@@ -8,6 +8,8 @@ import logging
 import configparser
 import tiktoken
 from tinytroupe import utils
+from tinytroupe.utils import compose_prompt_for_api # Added import to allow for Ollama usage
+import requests
 
 logger = logging.getLogger("tinytroupe")
 
@@ -42,35 +44,60 @@ default["cache_file_name"] = config["OpenAI"].get("CACHE_FILE_NAME", "openai_api
 # TODO under development
 class LLMCall:
     """
-    A class that represents an LLM model call. It contains the input messages, the model configuration, and the model output.
+    A class that represents an LLM model call. It contains the input messages or prompt, 
+    the model configuration, and the model output.
     """
-    def __init__(self, system_template_name:str, user_template_name:str=None, **model_params):
+
+    def __init__(self, system_template_name: str, user_template_name: str = None, **model_params):
         """
         Initializes an LLMCall instance with the specified system and user templates.
+        
+        Args:
+            system_template_name (str): The system-level template file name.
+            user_template_name (str, optional): The user-level template file name.
+            model_params (dict): Additional parameters for the LLM model.
         """
         self.system_template_name = system_template_name
         self.user_template_name = user_template_name
         self.model_params = model_params
-    
+        self.messages_or_prompt = None
+        self.model_output = None
+
     def call(self, **rendering_configs):
         """
         Calls the LLM model with the specified rendering configurations.
-        """
-        self.messages = utils.compose_initial_LLM_messages_with_templates(self.system_template_name, self.user_template_name, rendering_configs)
         
+        Args:
+            rendering_configs (dict): The configurations for rendering the template.
+            
+        Returns:
+            str: The model's output content if successful, or None otherwise.
+        """
+        # Use the wrapper function to dynamically generate the messages or prompt
+        self.messages_or_prompt = compose_prompt_for_api(
+            self.system_template_name, 
+            self.user_template_name, 
+            rendering_configs
+        )
 
-        # call the LLM model
-        self.model_output = client().send_message(self.messages, **self.model_params)
+        # Call the LLM model
+        self.model_output = client().send_message(self.messages_or_prompt, **self.model_params)
 
-        if 'content' in self.model_output:
+        if isinstance(self.model_output, dict) and 'content' in self.model_output:
             return self.model_output['content']
+        elif isinstance(self.model_output, str):
+            return self.model_output  # For Ollama, the output is directly a string
         else:
             logger.error(f"Model output does not contain 'content' key: {self.model_output}")
             return None
 
-
     def __repr__(self):
-        return f"LLMCall(messages={self.messages}, model_config={self.model_config}, model_output={self.model_output})"
+        return (
+            f"LLMCall(messages_or_prompt={self.messages_or_prompt}, "
+            f"model_params={self.model_params}, "
+            f"model_output={self.model_output})"
+        )
+
 
 
 ###########################################################################
@@ -392,6 +419,168 @@ class NonTerminalError(Exception):
     """
     pass
 
+
+###########################################################################
+# Ollama Client Class
+###########################################################################
+
+# class OllamaClient:
+#     def __init__(self, base_url, model, temperature=0.7, top_p=0.95, timeout=60):
+#         self.base_url = base_url
+#         self.model = model
+#         self.temperature = temperature
+#         self.top_p = top_p
+#         self.timeout = timeout
+
+
+#     def send_message(self, messages):
+#         """
+#         Sends a message to the Ollama API and returns the full JSON response.
+
+#         Args:
+#             messages (list): A list of dictionaries representing the conversation.
+
+#         Returns:
+#             dict: The full JSON response from the API.
+#         """
+#         payload = {
+#             "model": self.model,
+#             "messages": messages,
+#             "stream": False  # Ensure full response in one go
+#         }
+#         try:
+#             response = requests.post(
+#                 self.base_url,
+#                 json=payload,
+#                 timeout=self.timeout
+#             )
+#             response.raise_for_status()
+            
+#             # Parse response JSON
+#             response_json = response.json()
+#             logger.info(f"Ollama API Response: {response_json}")
+
+#             # Return the full response JSON
+#             return response_json
+            
+#         except requests.exceptions.RequestException as e:
+#             logger.error(f"Error communicating with Ollama API: {e}")
+#             return {"error": str(e)}
+#         except ValueError as e:  # Handle JSON decoding errors
+#             logger.error(f"Failed to parse API response: {e}")
+#             return {"error": "Invalid JSON response"}
+
+# class OllamaClient:
+#     def __init__(self, base_url, model, temperature=0.3, top_p=0.95, timeout=60):
+#         self.base_url = base_url
+#         self.model = model
+#         self.temperature = temperature
+#         self.top_p = top_p
+#         self.timeout = timeout
+
+#     def send_message(self, messages):
+#         """
+#         Sends a message to the Ollama API and returns the full JSON response.
+#         """
+#         payload = {
+#             "model": self.model,
+#             "messages": messages,
+#             "stream": False
+#         }
+
+#         try:
+#             response = requests.post(
+#                 self.base_url,
+#                 json=payload,
+#                 timeout=self.timeout
+#             )
+#             response.raise_for_status()
+            
+#             # Get the raw response
+#             response_json = response.json()
+#             logger.debug(f"Ollama API Response: {response_json}")
+
+#             # If we have a message with content, try to use it directly
+#             if 'message' in response_json and 'content' in response_json['message']:
+#                 content = response_json['message']['content']
+                
+#                 # Return the raw response - let the agent handle parsing
+#                 return response_json
+            
+#             logger.error(f"Unexpected response format: {response_json}")
+#             return response_json
+
+#         except requests.exceptions.RequestException as e:
+#             logger.error(f"Error communicating with Ollama API: {e}")
+#             return {"error": str(e)}
+            
+#         except ValueError as e:
+#             logger.error(f"Failed to parse API response: {e}")
+#             return {"error": "Invalid JSON response"}
+
+class OllamaClient:
+    def __init__(self, base_url, model, temperature=0.3, top_p=0.95, timeout=60):
+        self.base_url = base_url
+        self.model = model
+        self.temperature = temperature
+        self.top_p = top_p
+        self.timeout = timeout
+
+    def send_message(self, messages):
+        """
+        Sends a message to the Ollama API and returns the full JSON response.
+        """
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False
+        }
+        
+        try:
+            response = requests.post(
+                self.base_url,
+                json=payload,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            
+            # Get the raw response
+            response_json = response.json()
+            logger.debug(f"Ollama API Response: {response_json}")
+
+            # If we have a message with content
+            if 'message' in response_json and 'content' in response_json['message']:
+                content = response_json['message']['content']
+                
+                # Try to parse content as JSON
+                try:
+                    parsed_content = json.loads(content)
+                    if 'action' in parsed_content and 'cognitive_state' not in parsed_content:
+                        # Add cognitive_state if missing but action exists
+                        parsed_content['cognitive_state'] = {
+                            'goals': 'Continue current interaction',
+                            'attention': 'Current conversation',
+                            'emotions': 'Engaged'
+                        }
+                        return {'message': {'content': json.dumps(parsed_content)}}
+                except:
+                    pass  # If parsing fails, return original response
+                
+                # Return the raw response
+                return response_json
+
+            logger.error(f"Unexpected response format: {response_json}")
+            return response_json
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error communicating with Ollama API: {e}")
+            return {"error": str(e)}
+            
+        except ValueError as e:
+            logger.error(f"Failed to parse API response: {e}")
+            return {"error": "Invalid JSON response"}
+
+
 ###########################################################################
 # Clients registry
 #
@@ -483,6 +672,14 @@ def force_default_value(key, value):
 # default client
 register_client("openai", OpenAIClient())
 register_client("azure", AzureClient())
-    
+# Registering the Ollama client
+register_client("ollama", OllamaClient(
+    base_url=config["Ollama"].get("BASE_URL"),
+    model=config["Ollama"].get("MODEL"),
+    temperature=float(config["Ollama"].get("TEMPERATURE", 0.7)),
+    top_p=float(config["Ollama"].get("TOP_P", 0.95)),
+    timeout=int(config["Ollama"].get("TIMEOUT", 60))
+))
+
 
 

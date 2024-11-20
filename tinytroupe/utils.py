@@ -25,30 +25,78 @@ logger = logging.getLogger("tinytroupe")
 # Model input utilities
 ################################################################################
 
-def compose_initial_LLM_messages_with_templates(system_template_name:str, user_template_name:str=None, rendering_configs:dict={}) -> list:
+def compose_initial_LLM_messages_with_templates(system_template_name: str, user_template_name: str = None, rendering_configs: dict = {}) -> list:
     """
     Composes the initial messages for the LLM model call, under the assumption that it always involves 
     a system (overall task description) and an optional user message (specific task description). 
     These messages are composed using the specified templates and rendering configurations.
     """
-
     system_prompt_template_path = os.path.join(os.path.dirname(__file__), f'prompts/{system_template_name}')
     user_prompt_template_path = os.path.join(os.path.dirname(__file__), f'prompts/{user_template_name}')
 
     messages = []
 
     messages.append({"role": "system", 
-                         "content": chevron.render(
-                             open(system_prompt_template_path).read(), 
-                             rendering_configs)})
+                     "content": chevron.render(
+                         open(system_prompt_template_path).read(), 
+                         rendering_configs)})
     
     # optionally add a user message
     if user_template_name is not None:
         messages.append({"role": "user", 
-                            "content": chevron.render(
-                                    open(user_prompt_template_path).read(), 
-                                    rendering_configs)})
+                         "content": chevron.render(
+                             open(user_prompt_template_path).read(), 
+                             rendering_configs)})
     return messages
+
+def compose_prompt(system_template_name: str, user_template_name: str = None, rendering_configs: dict = {}) -> str:
+    """
+    Composes a single string prompt for Ollama.
+
+    Args:
+        system_template_name (str): The system prompt template file name.
+        user_template_name (str, optional): The user prompt template file name.
+        rendering_configs (dict): The configurations for rendering the template.
+
+    Returns:
+        str: A single string containing the full prompt.
+    """
+    system_prompt_template_path = os.path.join(os.path.dirname(__file__), f'prompts/{system_template_name}')
+    system_prompt = chevron.render(
+        open(system_prompt_template_path).read(), rendering_configs
+    )
+    
+    if user_template_name:
+        user_prompt_template_path = os.path.join(os.path.dirname(__file__), f'prompts/{user_template_name}')
+        user_prompt = chevron.render(
+            open(user_prompt_template_path).read(), rendering_configs
+        )
+        return f"{system_prompt}\n{user_prompt}"
+    return system_prompt
+
+def compose_prompt_for_api(system_template_name: str, user_template_name: str = None, rendering_configs: dict = {}) -> Union[list, str]:
+    """
+    A wrapper function that dynamically selects the appropriate prompt composition logic
+    based on the API type (e.g., OpenAI, Azure, or Ollama).
+
+    Args:
+        system_template_name (str): The system prompt template file name.
+        user_template_name (str, optional): The user prompt template file name.
+        rendering_configs (dict): The configurations for rendering the template.
+
+    Returns:
+        Union[list, str]: A list of messages (for OpenAI/Azure) or a single string prompt (for Ollama).
+    """
+    # Determine the API type from configuration
+    api_type = config["OpenAI"]["API_TYPE"]
+
+    if api_type == "ollama":
+        # Use Ollama-specific prompt structure
+        return compose_prompt(system_template_name, user_template_name, rendering_configs)
+    else:
+        # Use OpenAI/Azure-specific prompt structure
+        return compose_initial_LLM_messages_with_templates(system_template_name, user_template_name, rendering_configs)
+
 
 
 ################################################################################	
