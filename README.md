@@ -1,3 +1,124 @@
+# TinyTroupe with Ollama Integration
+
+This repository adapts and extends TinyTroupe to work with an **Ollama model** instead of OpenAI or other similar LLMs. Below is a summary of the changes made, along with instructions and recommendations for using the system effectively.
+
+## Key Changes and Enhancements
+
+### 1. openai_utils.py
+**Purpose**: Originally designed for OpenAI's API interactions.
+
+**Changes Made**:
+* Replaced functions and imports to support the Ollama API
+* Introduced the `OllamaClient` class for handling API interactions, including the `send_message` method
+* Replaced OpenAI-specific parameters (e.g., temperature, top-p) with Ollama parameters (base URL, model name, etc.)
+* Enhanced error handling to log Ollama API responses
+* Updated `extract_json` to handle Ollama-specific JSON outputs
+
+### 2. utils.py
+**Purpose**: Utility functions for the TinyTroupe environment.
+
+**Changes Made**:
+* Added two new functions:
+  * `compose_prompt`: Generates a single string prompt for Ollama using system and user templates
+  * `compose_prompt_for_api`: Dynamically selects the appropriate prompt structure based on the configured API type
+* Improved `extract_json` and `extract_code_block` for better handling of JSON responses from Ollama
+* Updated error handling to sanitize improperly formatted JSON outputs
+
+### 3. config.ini
+**Purpose**: Configuration file for global settings and credentials.
+
+**Changes Made**:
+* **New entries**:
+  * `ollama_base_url`: Defines the API endpoint for Ollama
+  * `ollama_model`: Specifies the model to use (e.g., Qwen2.5-32b)
+* **Removed OpenAI-specific entries**:
+  * `openai_api_key` and `organization_id`
+* **Recommendations**:
+  * Use a lower temperature setting to minimize formatting errors in the model's responses
+
+### 4. agent.py
+**Purpose**: Defines how agents process inputs and produce outputs.
+
+**Changes Made**:
+* Updated the `_produce_message` function to call `OllamaClient.send_message` instead of OpenAI's API
+* Adjusted response parsing logic to align with Ollama's output format
+* Enhanced error handling to address unexpected outputs or errors from the Ollama API
+
+### 5. simpletest.py
+**Purpose**: A minimal script for testing Ollama integration.
+
+**Changes Made**:
+* Replaces `scd.py` as a simplified driver script
+* Initializes `OllamaClient` using parameters from `config.ini`
+* Provides a quick way to verify that the local Ollama setup and model are functioning correctly
+* Includes logging for Ollama-specific response characteristics
+
+### 6. examples.py
+**Purpose**: Contains examples demonstrating TinyTroupe's capabilities.
+
+**Changes Made**:
+* Updated examples to be more entertaining while keeping the original examples commented out for reference
+
+### 7. tinyperson.mustache
+**Purpose**: Template for agent prompts.
+
+**Changes Made**:
+* Simplified the prompt structure to reduce errors with smaller models
+* Recommendation: If errors occur, start with a simpler prompt such as:
+
+```json
+You are {{name}}, a {{occupation}}. 
+Respond only in JSON format using this structure:
+
+{
+  "action": {
+    "type": ACTION_TYPE,
+    "content": CONTENT,
+    "target": TARGET
+  },
+  "cognitive_state": {
+    "goals": GOALS,
+    "attention": ATTENTION,
+    "emotions": EMOTIONS
+  }
+}
+```
+
+
+## Key Improvements
+
+### 1. JSON Parsing
+Enhanced parsing logic ensures better handling of malformed or verbose JSON outputs from Ollama.
+
+### 2. Prompt Adaptation
+Simplified prompt structure to align with Ollama's strengths, with gradual testing for more complex prompts.
+
+### 3. Error Handling
+Improved error logging and debugging mechanisms for clearer troubleshooting during integration.
+
+## Testing and Recommendations
+
+* Tested with: Qwen2.5-32b (Ollama model)
+* Not tested with other models: It should work with other models if prompts are adapted appropriately
+* Configuration: Ensure config.ini is properly set up with your model details and API endpoint
+* Temperature Setting: Use a lower temperature to minimize errors in JSON formatting
+
+## How to Use
+
+1. **Setup Configuration**: Update config.ini with your Ollama API details and model name
+
+2. **Run simpletest.py**: Use simpletest.py as a quick way to validate that your local Ollama setup is working
+
+3. **Explore Examples**: Modify and run the examples in examples.py for more dynamic and entertaining demonstrations
+
+4. **Adjust Prompts**: If you encounter errors, simplify the prompt in tinyperson.mustache and rebuild incrementally
+
+For further details or troubleshooting, feel free to modify the scripts and templates to suit your needs!
+
+
+This section provides an overview of the changes made specifically to support the Ollama server setup within TinyTroupe. For general information on TinyTroupe's core functionality, please refer to the original `README` below.
+
+
 # TinyTroupe 🤠🤓🥸🧐
 *LLM-powered multiagent persona simulation for imagination enhancement and business insights.*
 
