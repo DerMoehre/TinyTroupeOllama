@@ -1,0 +1,45 @@
+# TinyTroupeOllama/docker-compose.yml
+
+# Specify the Docker Compose file format version.
+version: '3.8'
+
+# Define the services (containers) that will run.
+services:
+  # --- Ollama Service ---
+  ollama:
+    image: ollama/ollama:latest # Use the latest official Ollama Docker image.
+    container_name: ollama # Assign a fixed name to the container for easy reference.
+    ports:
+      # Map port 11434 from the container to port 11434 on your host machine.
+      - "11434:11434"
+    volumes:
+      # Mount a named volume to persist Ollama models and data.
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    tty: true
+  # --- TinyTroupe App Service ---
+  tinytroupe_app:
+    build:
+      # 'context: .' tells Docker to use the current directory (TinyTroupeOllama/) as the build context.
+      context: .
+      # 'dockerfile: ./app/Dockerfile' specifies the path to the Dockerfile for this service.
+      dockerfile: ./app/Dockerfile
+    container_name: tinytroupe_app # Assign a fixed name to the container.
+    depends_on:
+      # This ensures the 'ollama' service starts successfully before 'tinytroupe_app' attempts to start.
+      - ollama
+    environment:
+      # Pass the OLLAMA_MODEL environment variable (defined in your .env file)
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+
+    volumes:
+      # Mount your local 'app' directory into '/app_code' inside the container.
+      - ./app:/app_code
+    working_dir: /app_code
+    restart: "no"
+
+# Define named volumes for persistent data.
+# 'ollama_data' is used by the 'ollama' service to store models.
+volumes:
+  ollama_data:
+    external: false # Docker Compose will manage this volume for you.
